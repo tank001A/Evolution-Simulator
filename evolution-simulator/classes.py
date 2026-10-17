@@ -1,4 +1,5 @@
-import time; from time import *
+import time
+
 
 class Tile:
     def __init__(
