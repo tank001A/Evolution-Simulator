@@ -1,5 +1,5 @@
 import time
-
+import random; from random import *
 
 class Tile:
     def __init__(
@@ -7,21 +7,17 @@ class Tile:
         row,
         column,
         tile_type="rock",
-        water_content=0,
-        nutrient_content=5
     ):
         self.row = row
         self.column = column
         self.tile_type = tile_type
-        self.water_content = water_content
-        self.nutrient_content = nutrient_content
+        self.water_content = 0
+        self.nutrient_content = 0
+
 
     def get_colour(self):
         if self.tile_type == "rock":
             return 100, 100, 100
-
-        elif self.tile_type == "soil":
-            return 120, 80, 40
 
         elif self.tile_type == "water":
             return 40, 100, 200
@@ -56,6 +52,8 @@ class World:
                 current_row.append(next_tile)
 
             self.grid.append(current_row)
+
+        self.all_organisms = []
 
     def get_elapsed_time(self):
         return time.perf_counter() - self.start_time
@@ -93,16 +91,12 @@ class RockTile(Tile):
     def __init__(
         self,
         row,
-        column,
-        water_content=0,
-        nutrient_content=5
+        column
     ):
         super().__init__(
             row=row,
             column=column,
             tile_type="rock",
-            water_content=water_content,
-            nutrient_content=nutrient_content
         )
 
         self.dust = 0
@@ -122,20 +116,20 @@ class WaterTile(Tile):
         self,
         row,
         column,
-        water_content=100,
-        nutrient_content=0
+
     ):
         super().__init__(
             row=row,
             column=column,
             tile_type="water",
-            water_content=water_content,
-            nutrient_content=nutrient_content
         )
 
 
 class Organism:
-    def __init__(self, organism_position, tile_requirements=None):
+    def __init__(self,
+                 organism_position,
+                 tile_requirements=None
+                 ):
         self.organism_position = organism_position
         self.alive = True
         self.tile_requirements = tile_requirements or {}
@@ -144,9 +138,25 @@ class Organism:
         self.alive = False
 
 
+
 class Coloniser(Organism):
-    def improve_tile(self):
+
+    def improve_tile(self, organic_mass):
         return None
 
     def try_spread(self):
         return None
+
+
+
+class Moss(Coloniser):
+    def __init__(self):
+        self.density = 500
+
+    def improve_tile_via_death(self):
+
+        amount = random.randint(0,self.density)
+        self.density = self.density - amount
+        # 50 percent of the amount that have died become organic mass for now.
+        organic_mass = amount * 0.5
+        return organic_mass
