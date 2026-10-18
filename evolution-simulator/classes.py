@@ -5,12 +5,44 @@ import numpy as np
 import pygame
 
 
+ROCK_PROPERTIES = {
+    "granite": {
+        "ucs_mpa": 175.0,
+        "weathering_factor": 0.8
+    },
+    "basalt": {
+        "ucs_mpa": 200.0,
+        "weathering_factor": 0.7
+    },
+    "sandstone": {
+        "ucs_mpa": 80.0,
+        "weathering_factor": 1.2
+    },
+    "limestone": {
+        "ucs_mpa": 100.0,
+        "weathering_factor": 1.3
+    },
+    "shale": {
+        "ucs_mpa": 50.0,
+        "weathering_factor": 1.8
+    }
+}
+
+
+def clamp(value, minimum, maximum):
+    return min(
+        maximum,
+        max(minimum, value)
+    )
+
+
 class Tile:
     def __init__(
         self,
         row,
         column,
-        tile_type="rock"
+        tile_type="rock",
+        lithology="granite"
     ):
         self.row = row
         self.column = column
@@ -18,6 +50,93 @@ class Tile:
 
         self.water_content = 0.0
         self.nutrient_content = 0.0
+        self.organic_matter = 0.0
+
+        self.weathering_progress = 0.0
+        self.soil_depth = 0.0
+
+        self.lithology = None
+        self.ucs_mpa = None
+        self.weathering_factor = None
+
+        self.species_biomass = {}
+
+        self.set_lithology(lithology)
+
+    def set_lithology(self, lithology):
+        if lithology not in ROCK_PROPERTIES:
+            raise ValueError(
+                f"Unknown lithology: {lithology}"
+            )
+
+        self.lithology = lithology
+
+        self.ucs_mpa = (
+            ROCK_PROPERTIES[lithology]["ucs_mpa"]
+        )
+
+        self.weathering_factor = (
+            ROCK_PROPERTIES[lithology]
+            ["weathering_factor"]
+        )
+
+    def add_species_biomass(
+        self,
+        species_name,
+        amount
+    ):
+        if amount < 0:
+            raise ValueError(
+                "Biomass amount cannot be negative."
+            )
+
+        current_amount = (
+            self.species_biomass.get(
+                species_name,
+                0.0
+            )
+        )
+
+        self.species_biomass[species_name] = (
+            current_amount + amount
+        )
+
+    def remove_species_biomass(
+        self,
+        species_name,
+        amount
+    ):
+        if amount < 0:
+            raise ValueError(
+                "Biomass amount cannot be negative."
+            )
+
+        current_amount = (
+            self.species_biomass.get(
+                species_name,
+                0.0
+            )
+        )
+
+        remaining_amount = max(
+            0.0,
+            current_amount - amount
+        )
+
+        self.species_biomass[species_name] = (
+            remaining_amount
+        )
+
+    def get_species_biomass(self, species_name):
+        return self.species_biomass.get(
+            species_name,
+            0.0
+        )
+
+    def get_total_biomass(self):
+        return sum(
+            self.species_biomass.values()
+        )
 
     def add_water(self, amount):
         if amount < 0:
@@ -25,7 +144,11 @@ class Tile:
                 "Water amount cannot be negative."
             )
 
-        self.water_content += amount
+        self.water_content = clamp(
+            self.water_content + amount,
+            0.0,
+            100.0
+        )
 
     def remove_water(self, amount):
         if amount < 0:
@@ -33,9 +156,10 @@ class Tile:
                 "Water amount cannot be negative."
             )
 
-        self.water_content = max(
-            0,
-            self.water_content - amount
+        self.water_content = clamp(
+            self.water_content - amount,
+            0.0,
+            100.0
         )
 
     def add_nutrients(self, amount):
@@ -44,7 +168,11 @@ class Tile:
                 "Nutrient amount cannot be negative."
             )
 
-        self.nutrient_content += amount
+        self.nutrient_content = clamp(
+            self.nutrient_content + amount,
+            0.0,
+            100.0
+        )
 
     def remove_nutrients(self, amount):
         if amount < 0:
@@ -52,19 +180,140 @@ class Tile:
                 "Nutrient amount cannot be negative."
             )
 
-        self.nutrient_content = max(
-            0,
-            self.nutrient_content - amount
+        self.nutrient_content = clamp(
+            self.nutrient_content - amount,
+            0.0,
+            100.0
         )
 
-    def get_colour(self):
-        if self.tile_type == "rock":
-            return 100, 100, 100
+    def add_organic_matter(self, amount):
+        if amount < 0:
+            raise ValueError(
+                "Organic matter amount cannot be negative."
+            )
 
+        self.organic_matter = clamp(
+            self.organic_matter + amount,
+            0.0,
+            100.0
+        )
+
+    def get_water_suitability(self):
+        return clamp(
+            self.water_content / 100.0,
+            0.0,
+            1.0
+        )
+
+    def get_nutrient_suitability(self):
+        return clamp(
+            self.nutrient_content / 100.0,
+            0.0,
+            1.0
+        )
+
+    def weather(self, weathering_rate=0.02):
+        water_suitability = (
+            self.get_water_suitability()
+        )
+
+        organic_multiplier = (
+            1.0
+            + self.organic_matter / 100.0
+        )
+
+        weathering_change = (
+            weathering_rate
+            * self.weathering_factor
+            * water_suitability
+            * organic_multiplier
+        )
+
+        self.weathering_progress = clamp(
+            self.weathering_progress
+            + weathering_change,
+            0.0,
+            100.0
+        )
+
+    def develop_soil(
+        self,
+        soil_conversion_rate=0.02
+    ):
+        organic_contribution = (
+            self.organic_matter
+            * soil_conversion_rate
+        )
+
+        mineral_contribution = (
+            self.weathering_progress
+            * 0.005
+        )
+
+        soil_change = (
+            organic_contribution
+            + mineral_contribution
+        )
+
+        self.soil_depth = clamp(
+            self.soil_depth + soil_change,
+            0.0,
+            100.0
+        )
+
+        self.organic_matter = clamp(
+            self.organic_matter
+            - organic_contribution,
+            0.0,
+            100.0
+        )
+
+        self.add_nutrients(
+            soil_change * 0.1
+        )
+
+    def get_succession_stage(self):
+        if self.soil_depth < 5.0:
+            return "Bare rock"
+
+        if self.soil_depth < 20.0:
+            return "Pioneer"
+
+        if self.soil_depth < 50.0:
+            return "Early soil"
+
+        if self.soil_depth < 80.0:
+            return "Developing soil"
+
+        return "Mature soil"
+
+    def get_colour(self):
         if self.tile_type == "water":
             return 40, 100, 200
 
-        return 255, 0, 255
+        if self.soil_depth >= 50.0:
+            return 80, 120, 50
+
+        if self.soil_depth >= 20.0:
+            return 110, 100, 55
+
+        weathering_ratio = (
+            self.weathering_progress / 100.0
+        )
+
+        red = int(
+            100 + 35 * weathering_ratio
+        )
+
+        green = int(
+            100 + 20 * weathering_ratio
+        )
+
+        blue = int(
+            100 - 35 * weathering_ratio
+        )
+
+        return red, green, blue
 
 
 class World:
@@ -89,28 +338,76 @@ class World:
             current_row = []
 
             for column in range(grid_width):
-                tile = Tile(
-                    row=row,
-                    column=column
+                current_row.append(
+                    Tile(
+                        row=row,
+                        column=column
+                    )
                 )
-
-                current_row.append(tile)
 
             self.grid.append(current_row)
 
         self.all_organisms = []
+
         self.display_changed = True
+        self.statistics_changed = True
+
+        self.environment_update_interval = 5
+        self.weathering_rate = 0.02
+        self.rainfall_amount = 1.0
+        self.evaporation_amount = 0.5
+
+        self.cached_average_water = 0.0
+        self.cached_average_soil = 0.0
 
     def get_elapsed_time(self):
-        return time.perf_counter() - self.start_time
+        return (
+            time.perf_counter()
+            - self.start_time
+        )
 
     def update(self):
         if self.paused:
             return
 
         self.simulation_time += 1
+
+        self.apply_rainfall()
+        self.apply_evaporation()
         self.update_organisms()
+
+        if (
+            self.simulation_time
+            % self.environment_update_interval
+            == 0
+        ):
+            self.update_environment()
+
+        self.statistics_changed = True
         self.display_changed = True
+
+    def apply_rainfall(self):
+        for row in self.grid:
+            for tile in row:
+                tile.add_water(
+                    self.rainfall_amount
+                )
+
+    def apply_evaporation(self):
+        for row in self.grid:
+            for tile in row:
+                tile.remove_water(
+                    self.evaporation_amount
+                )
+
+    def update_environment(self):
+        for row in self.grid:
+            for tile in row:
+                tile.weather(
+                    self.weathering_rate
+                )
+
+                tile.develop_soil()
 
     def pause_world(self):
         self.paused = True
@@ -129,6 +426,8 @@ class World:
 
     def add_organism(self, organism):
         self.all_organisms.append(organism)
+
+        self.statistics_changed = True
         self.display_changed = True
 
     def get_tile_at(self, row, column):
@@ -139,6 +438,27 @@ class World:
             return None
 
         return self.grid[row][column]
+
+    def get_neighbouring_tiles(self, row, column):
+        neighbours = []
+
+        directions = [
+            (-1, 0),
+            (1, 0),
+            (0, -1),
+            (0, 1)
+        ]
+
+        for row_change, column_change in directions:
+            tile = self.get_tile_at(
+                row + row_change,
+                column + column_change
+            )
+
+            if tile is not None:
+                neighbours.append(tile)
+
+        return neighbours
 
     def update_organisms(self):
         for organism in self.all_organisms:
@@ -158,70 +478,184 @@ class World:
                     self
                 )
 
-    def get_average_water(self):
+        self.all_organisms = [
+            organism
+            for organism in self.all_organisms
+            if organism.alive
+        ]
+
+    def update_statistics(self):
         total_water = 0.0
+        total_soil = 0.0
         tile_count = 0
 
         for row in self.grid:
             for tile in row:
                 total_water += tile.water_content
+                total_soil += tile.soil_depth
                 tile_count += 1
 
-        if tile_count == 0:
-            return 0.0
+        if tile_count > 0:
+            self.cached_average_water = (
+                total_water / tile_count
+            )
 
-        return total_water / tile_count
+            self.cached_average_soil = (
+                total_soil / tile_count
+            )
 
-    def get_total_organism_density(self):
+        self.statistics_changed = False
+
+    def get_average_water(self):
+        return self.cached_average_water
+
+    def get_average_soil_depth(self):
+        return self.cached_average_soil
+
+    def get_population_density(self, organism_type):
         total_density = 0.0
 
         for organism in self.all_organisms:
-            if hasattr(organism, "density"):
+            if (
+                isinstance(organism, organism_type)
+                and organism.alive
+            ):
                 total_density += organism.density
 
         return total_density
 
-    def draw(self, surface):
-        colour_array = np.zeros(
-            (
-                self.grid_width,
-                self.grid_height,
-                3
-            ),
-            dtype=np.uint8
+    def get_visible_bounds(
+        self,
+        camera_x,
+        camera_y,
+        zoom,
+        viewport_width,
+        viewport_height
+    ):
+        first_column = max(
+            0,
+            int(camera_x)
         )
 
-        for row in self.grid:
-            for tile in row:
-                colour_array[
-                    tile.column,
-                    tile.row
-                ] = tile.get_colour()
-
-        pygame.surfarray.blit_array(
-            surface,
-            colour_array
+        first_row = max(
+            0,
+            int(camera_y)
         )
 
-        self.display_changed = False
+        visible_columns = (
+            viewport_width // zoom
+        ) + 2
+
+        visible_rows = (
+            viewport_height // zoom
+        ) + 2
+
+        last_column = min(
+            self.grid_width,
+            first_column + visible_columns
+        )
+
+        last_row = min(
+            self.grid_height,
+            first_row + visible_rows
+        )
+
+        return (
+            first_row,
+            last_row,
+            first_column,
+            last_column
+        )
+
+    def draw_visible(
+        self,
+        surface,
+        camera_x,
+        camera_y,
+        zoom,
+        viewport_rect,
+        selected_position=None
+    ):
+        surface.fill(
+            (15, 15, 15)
+        )
+
+        (
+            first_row,
+            last_row,
+            first_column,
+            last_column
+        ) = self.get_visible_bounds(
+            camera_x,
+            camera_y,
+            zoom,
+            viewport_rect.width,
+            viewport_rect.height
+        )
+
+        for row in range(first_row, last_row):
+            for column in range(
+                first_column,
+                last_column
+            ):
+                tile = self.grid[row][column]
+
+                screen_x = (
+                    viewport_rect.x
+                    + int(
+                        (column - camera_x)
+                        * zoom
+                    )
+                )
+
+                screen_y = (
+                    viewport_rect.y
+                    + int(
+                        (row - camera_y)
+                        * zoom
+                    )
+                )
+
+                tile_rect = pygame.Rect(
+                    screen_x,
+                    screen_y,
+                    zoom + 1,
+                    zoom + 1
+                )
+
+                pygame.draw.rect(
+                    surface,
+                    tile.get_colour(),
+                    tile_rect
+                )
+
+                if (
+                    selected_position
+                    == (row, column)
+                ):
+                    pygame.draw.rect(
+                        surface,
+                        (255, 255, 0),
+                        tile_rect,
+                        max(1, zoom // 4)
+                    )
 
 
 class RockTile(Tile):
     def __init__(
         self,
         row,
-        column
+        column,
+        lithology="granite"
     ):
         super().__init__(
             row=row,
             column=column,
-            tile_type="rock"
+            tile_type="rock",
+            lithology=lithology
         )
 
         self.dust = 0.0
-
-    def add_organic_matter(self, amount):
-        self.add_nutrients(amount)
 
     def update_dust(self, amount):
         if amount < 0:
@@ -230,12 +664,6 @@ class RockTile(Tile):
             )
 
         self.dust += amount
-
-    def update_soil_water_saturation(self, amount):
-        if amount >= 0:
-            self.add_water(amount)
-        else:
-            self.remove_water(-amount)
 
 
 class WaterTile(Tile):
@@ -283,7 +711,7 @@ class Organism:
 class Coloniser(Organism):
     def improve_tile(self, tile):
         raise NotImplementedError(
-            "Each coloniser must define how it improves a tile."
+            "Each coloniser must define its own tile effect."
         )
 
     def try_spread(self, world):
@@ -294,20 +722,33 @@ class Moss(Coloniser):
     def __init__(
         self,
         organism_position,
-        density=500.0,
+        density=100.0,
+        carrying_capacity=1000.0,
+        growth_rate=0.02,
         mortality_rate=0.05
     ):
         super().__init__(
             organism_position=organism_position,
             tile_requirements={
                 "minimum_water": 10.0,
-                "minimum_nutrients": 5.0
+                "minimum_nutrients": 5.0,
+                "minimum_weathering": 0.1
             }
         )
 
         if density < 0:
             raise ValueError(
-                "Moss density cannot be negative."
+                "Density cannot be negative."
+            )
+
+        if carrying_capacity <= 0:
+            raise ValueError(
+                "Carrying capacity must be positive."
+            )
+
+        if not 0 <= growth_rate <= 1:
+            raise ValueError(
+                "Growth rate must be between 0 and 1."
             )
 
         if not 0 <= mortality_rate <= 1:
@@ -315,59 +756,130 @@ class Moss(Coloniser):
                 "Mortality rate must be between 0 and 1."
             )
 
+        if density > carrying_capacity:
+            raise ValueError(
+                "Density cannot exceed carrying capacity."
+            )
+
         self.density = float(density)
+        self.carrying_capacity = float(
+            carrying_capacity
+        )
+        self.growth_rate = growth_rate
         self.mortality_rate = mortality_rate
 
+        self.health = 1.0
+
+        self.species_name = "Moss"
+
     def can_survive_on(self, tile):
-        minimum_water = (
-            self.tile_requirements["minimum_water"]
+        return (
+            tile.water_content
+            >= self.tile_requirements
+            ["minimum_water"]
+            and
+            tile.nutrient_content
+            >= self.tile_requirements
+            ["minimum_nutrients"]
+            and
+            tile.weathering_progress
+            >= self.tile_requirements
+            ["minimum_weathering"]
         )
 
-        minimum_nutrients = (
-            self.tile_requirements["minimum_nutrients"]
+    def get_suitability(self, tile):
+        water_suitability = clamp(
+            tile.water_content / 100.0,
+            0.0,
+            1.0
+        )
+
+        nutrient_suitability = clamp(
+            tile.nutrient_content / 100.0,
+            0.0,
+            1.0
+        )
+
+        weathering_suitability = clamp(
+            tile.weathering_progress / 10.0,
+            0.0,
+            1.0
         )
 
         return (
-            tile.water_content >= minimum_water
-            and
-            tile.nutrient_content >= minimum_nutrients
+            water_suitability
+            * nutrient_suitability
+            * weathering_suitability
         )
 
     def consume_resources(self, tile):
-        if not self.can_survive_on(tile):
-            return False
-
-        water_used = max(
-            1.0,
-            self.density / 100
+        water_used = (
+            self.density * 0.001
         )
 
-        nutrients_used = max(
-            1.0,
-            self.density / 200
+        nutrients_used = (
+            self.density * 0.0005
         )
 
-        tile.remove_water(water_used)
-        tile.remove_nutrients(nutrients_used)
+        tile.remove_water(
+            water_used
+        )
 
-        return True
+        tile.remove_nutrients(
+            nutrients_used
+        )
+
+    def reproduce(self, tile):
+        suitability = (
+            self.get_suitability(tile)
+        )
+
+        density_ratio = (
+            self.density
+            / self.carrying_capacity
+        )
+
+        logistic_growth = (
+            self.growth_rate
+            * self.density
+            * (1.0 - density_ratio)
+            * suitability
+        )
+
+        self.density = min(
+            self.carrying_capacity,
+            self.density + logistic_growth
+        )
+
+        tile.species_biomass[
+            self.species_name
+        ] = self.density
+
+        return logistic_growth
 
     def improve_tile(self, tile):
         organic_mass = (
             self.improve_tile_via_death()
         )
 
-        tile.add_nutrients(organic_mass)
+        tile.add_organic_matter(
+            organic_mass
+        )
+
+        tile.add_nutrients(
+            organic_mass
+        )
+
+        tile.species_biomass[
+            self.species_name
+        ] = self.density
 
         return organic_mass
 
     def improve_tile_via_death(self):
-        if self.density <= 0:
-            self.die()
-            return 0.0
-
-        expected_deaths = (
-            self.density * self.mortality_rate
+        mortality = (
+            self.density
+            * self.mortality_rate
         )
 
         variation = random.uniform(
@@ -375,21 +887,94 @@ class Moss(Coloniser):
             1.2
         )
 
-        amount_dead = expected_deaths * variation
         amount_dead = min(
-            amount_dead,
-            self.density
+            self.density,
+            mortality * variation
         )
 
         self.density -= amount_dead
-
-        organic_mass = amount_dead * 0.5
 
         if self.density <= 0:
             self.density = 0.0
             self.die()
 
-        return organic_mass
+        return amount_dead * 0.01
+
+    def try_spread(self, world):
+        if self.density < 100.0:
+            return False
+
+        row, column = self.organism_position
+
+        suitable_tiles = [
+            tile
+            for tile in world.get_neighbouring_tiles(
+                row,
+                column
+            )
+            if self.can_survive_on(tile)
+        ]
+
+        if not suitable_tiles:
+            return False
+
+        target_tile = random.choice(
+            suitable_tiles
+        )
+
+        target_position = (
+            target_tile.row,
+            target_tile.column
+        )
+
+        for organism in world.all_organisms:
+            if (
+                isinstance(organism, Moss)
+                and
+                organism.organism_position
+                == target_position
+            ):
+                transfer = min(
+                    10.0,
+                    self.density
+                )
+
+                available_capacity = (
+                    organism.carrying_capacity
+                    - organism.density
+                )
+
+                transfer = min(
+                    transfer,
+                    available_capacity
+                )
+
+                organism.density += transfer
+                self.density -= transfer
+
+                target_tile.species_biomass[
+                    "Moss"
+                ] = organism.density
+
+                return transfer > 0
+
+        new_moss = Moss(
+            organism_position=target_position,
+            density=10.0,
+            carrying_capacity=self.carrying_capacity,
+            growth_rate=self.growth_rate,
+            mortality_rate=self.mortality_rate
+        )
+
+        world.add_organism(new_moss)
+
+        target_tile.species_biomass[
+            "Moss"
+        ] = new_moss.density
+
+        self.density -= 10.0
+
+        return True
 
     def update(self, tile, world):
         if self.density <= 0:
@@ -397,6 +982,18 @@ class Moss(Coloniser):
             return
 
         if self.can_survive_on(tile):
+            self.health = min(
+                1.0,
+                self.health + 0.01
+            )
+
             self.consume_resources(tile)
+            self.reproduce(tile)
+
+            if random.random() < 0.05:
+                self.try_spread(world)
         else:
-            self.improve_tile(tile)
+            self.health -= 0.05
+
+            if self.health <= 0:
+                self.improve_tile(tile)
