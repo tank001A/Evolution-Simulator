@@ -514,10 +514,18 @@ def create_demo_organism():
         density=100.0
     )
 
+    lichen = Lichen(
+        organism_position=(row, column),
+        density=100.0
+    )
+
     # The tile dictionary supplies the panel's population information.
     # The world organism list supplies the objects that receive updates.
     tile.species_biomass["Moss"] = moss.density
     world.add_organism(moss)
+    tile.species_biomass["Lichen"] = lichen.density
+    world.add_organism(lichen)
+
 
 
 create_demo_organism()
