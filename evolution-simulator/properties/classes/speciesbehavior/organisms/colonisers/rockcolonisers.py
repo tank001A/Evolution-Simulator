@@ -3,265 +3,144 @@ import random
 from properties.classes.Organisms import Coloniser
 from properties.visual_properties import clamp
 
-
 class RockColoniser(Coloniser):
+    species_name = None
+    tile_requirements = None
+    water_use_rate = 0.001
+    nutrient_use_rate = 0.0005
+    spread_threshold = 100.0
+    spread_amount = 10.0
+
     def __init__(
         self,
-        organism_name,
         organism_position,
-        tile_requirements,
         density=100.0,
         carrying_capacity=1000.0,
         growth_rate=0.02,
-        mortality_rate=0.05
-
+        mortality_rate=0.05,
     ):
+        if self.species_name is None:
+            raise TypeError(
+                "RockColoniser is a base class; create a specific "
+                "species such as Moss or Lichen instead."
+            )
+        if density < 0:
+            raise ValueError("Density cannot be negative.")
+        if carrying_capacity <= 0:
+            raise ValueError("Carrying capacity must be positive.")
+        if not 0 <= growth_rate <= 1:
+            raise ValueError("Growth rate must be between 0 and 1.")
+        if not 0 <= mortality_rate <= 1:
+            raise ValueError("Mortality rate must be between 0 and 1.")
+        if density > carrying_capacity:
+            raise ValueError("Density cannot exceed carrying capacity.")
+
         super().__init__(
             organism_position=organism_position,
-            tile_requirements=tile_requirements,
+            tile_requirements=self.tile_requirements,
         )
-
-        self.organism_name = organism_name
-        self.mortality_rate = mortality_rate
-        self.growth_rate = growth_rate
-        self.carrying_capacity = carrying_capacity
-        if density < 0:
-            raise ValueError(
-                "Density cannot be negative."
-            )
-
-        if carrying_capacity <= 0:
-            raise ValueError(
-                "Carrying capacity must be positive."
-            )
-
-
-        if not 0 <= growth_rate <= 1:
-            raise ValueError(
-                "Growth rate must be between 0 and 1."
-            )
-
-        if not 0 <= mortality_rate <= 1:
-            raise ValueError(
-                "Mortality rate must be between 0 and 1."
-            )
-
-        if density > carrying_capacity:
-            raise ValueError(
-                "Density cannot exceed carrying capacity."
-            )
 
         self.density = float(density)
-        self.carrying_capacity = float(
-            carrying_capacity
-        )
+        self.carrying_capacity = float(carrying_capacity)
         self.growth_rate = growth_rate
         self.mortality_rate = mortality_rate
-
         self.health = 1.0
 
-        self.species_name = organism_name
-
-    def can_survive_on(self, tile):
-        return (
-            tile.water_content
-            >= self.tile_requirements
-            ["minimum_water"]
-            and
-            tile.nutrient_content
-            >= self.tile_requirements
-            ["minimum_nutrients"]
-            and
-            tile.weathering_progress
-            >= self.tile_requirements
-            ["minimum_weathering"]
-        )
 
     def get_suitability(self, tile):
-        water_suitability = clamp(
-            tile.water_content / 100.0,
-            0.0,
-            1.0
-        )
-
-        nutrient_suitability = clamp(
-            tile.nutrient_content / 100.0,
-            0.0,
-            1.0
-        )
-
-        weathering_suitability = clamp(
-            tile.weathering_progress / 10.0,
-            0.0,
-            1.0
-        )
-
-        return (
-            water_suitability
-            * nutrient_suitability
-            * weathering_suitability
-        )
+        water = clamp(tile.water_content / 100.0, 0.0, 1.0)
+        nutrients = clamp(tile.nutrient_content / 100.0, 0.0, 1.0)
+        weathering = clamp(tile.weathering_progress / 10.0, 0.0, 1.0)
+        return water * nutrients * weathering
 
     def consume_resources(self, tile):
-        water_used = (
-            self.density * 0.001
-        )
+        tile.remove_water(self.density * self.water_use_rate)
+        tile.remove_nutrients(self.density * self.nutrient_use_rate)
 
-        nutrients_used = (
-            self.density * 0.0005
-        )
-
-        tile.remove_water(
-            water_used
-        )
-
-        tile.remove_nutrients(
-            nutrients_used
-        )
+    def record_biomass(self, tile):
+        tile.species_biomass[self.species_name] = self.density
 
     def reproduce(self, tile):
-        suitability = (
-            self.get_suitability(tile)
-        )
-
-        density_ratio = (
-            self.density
-            / self.carrying_capacity
-        )
-
+        density_ratio = self.density / self.carrying_capacity
         logistic_growth = (
             self.growth_rate
             * self.density
             * (1.0 - density_ratio)
-            * suitability
+            * self.get_suitability(tile)
         )
-
-        self.density = min(
-            self.carrying_capacity,
-            self.density + logistic_growth
-        )
-
-        tile.species_biomass[
-            self.species_name
-        ] = self.density
-
+        self.density = min(self.carrying_capacity, self.density + logistic_growth)
+        self.record_biomass(tile)
         return logistic_growth
 
     def improve_tile(self, tile):
-        organic_mass = (
-            self.improve_tile_via_death()
-        )
-
-        tile.add_organic_matter(
-            organic_mass
-        )
-
-        tile.add_nutrients(
-            organic_mass
-        )
-
-        tile.species_biomass[
-            self.species_name
-        ] = self.density
-
+        organic_mass = self.improve_tile_via_death()
+        tile.add_organic_matter(organic_mass)
+        tile.add_nutrients(organic_mass)
+        self.record_biomass(tile)
         return organic_mass
 
     def improve_tile_via_death(self):
-        mortality = (
-            self.density
-            * self.mortality_rate
-        )
-
-        variation = random.uniform(
-            0.8,
-            1.2
-        )
-
-        amount_dead = min(
-            self.density,
-            mortality * variation
-        )
-
+        mortality = self.density * self.mortality_rate
+        amount_dead = min(self.density, mortality * random.uniform(0.8, 1.2))
         self.density -= amount_dead
-
         if self.density <= 0:
             self.density = 0.0
             self.die()
-
         return amount_dead * 0.01
 
+    def receive(self, amount):
+        accepted = clamp(amount, 0.0, self.carrying_capacity - self.density)
+        self.density += accepted
+        return accepted
+
+
+    def spawn_offspring(self, position):
+
+        return type(self)(
+            organism_position=position,
+            density=self.spread_amount,
+            carrying_capacity=self.carrying_capacity,
+            growth_rate=self.growth_rate,
+            mortality_rate=self.mortality_rate,
+        )
+
+    def find_same_species_at(self, world, position):
+        for organism in world.all_organisms:
+            if (
+                isinstance(organism, type(self))
+                and organism.alive
+                and organism.organism_position == position
+            ):
+                return organism
+        return None
+
     def try_spread(self, world):
-        if self.density < 100.0:
+        if self.density < self.spread_threshold:
             return False
 
         row, column = self.organism_position
-
         suitable_tiles = [
             tile
-            for tile in world.get_neighbouring_tiles(
-                row,
-                column
-            )
+            for tile in world.get_neighbouring_tiles(row, column)
             if self.can_survive_on(tile)
         ]
-
         if not suitable_tiles:
             return False
 
-        target_tile = random.choice(
-            suitable_tiles
-        )
+        target_tile = random.choice(suitable_tiles)
+        target_position = (target_tile.row, target_tile.column)
 
-        target_position = (
-            target_tile.row,
-            target_tile.column
-        )
+        neighbour = self.find_same_species_at(world, target_position)
+        if neighbour is not None:
+            transferred = neighbour.receive(min(self.spread_amount, self.density))
+            self.density -= transferred
+            neighbour.record_biomass(target_tile)
+            return transferred > 0
 
-        for organism in world.all_organisms:
-            if (
-                organism.organism_position
-                == target_position
-            ):
-                transfer = min(
-                    10.0,
-                    self.density
-                )
-
-                available_capacity = (
-                    organism.carrying_capacity
-                    - organism.density
-                )
-
-                transfer = min(
-                    transfer,
-                    available_capacity
-                )
-
-                organism.density += transfer
-                self.density -= transfer
-
-                target_tile.species_biomass[
-                    "Moss"
-                ] = organism.density
-
-                return transfer > 0
-
-        new_organism = self.species_name(
-            organism_position=target_position,
-            density=10.0,
-            carrying_capacity=self.carrying_capacity,
-            growth_rate=self.growth_rate,
-            mortality_rate=self.mortality_rate
-        )
-
-        world.add_organism(new_organism)
-
-        target_tile.species_biomass[
-            ""
-        ] = new_organism.density
-
-        self.density -= 10.0
-
+        offspring = self.spawn_offspring(target_position)
+        world.add_organism(offspring)
+        offspring.record_biomass(target_tile)
+        self.density -= offspring.density
         return True
 
     def update(self, tile, world):
@@ -270,592 +149,31 @@ class RockColoniser(Coloniser):
             return
 
         if self.can_survive_on(tile):
-            self.health = min(
-                1.0,
-                self.health + 0.01
-            )
-
+            self.health = min(1.0, self.health + 0.01)
             self.consume_resources(tile)
             self.reproduce(tile)
-
             if random.random() < 0.05:
                 self.try_spread(world)
         else:
             self.health -= 0.05
-
             if self.health <= 0:
                 self.improve_tile(tile)
-
 
 
 class Moss(RockColoniser):
-    def __init__(
-        self,
-        tile_requirements,
-        organism_position,
-        density=100.0,
-        carrying_capacity=1000.0,
-        growth_rate=0.02,
-        mortality_rate=0.05
-    ):
-        super().__init__(
-            organism_name="Moss",
-            organism_position=organism_position,
-            density=density,
-            carrying_capacity=carrying_capacity,
-            growth_rate=growth_rate,
-            mortality_rate=mortality_rate,
-
-            tile_requirements = {
-                "minimum_water": 10.0,
-                "minimum_nutrients": 5.0,
-                "minimum_weathering": 0.1
-            },
-
-        )
-
-        if density < 0:
-            raise ValueError(
-                "Density cannot be negative."
-            )
-
-        if carrying_capacity <= 0:
-            raise ValueError(
-                "Carrying capacity must be positive."
-            )
-
-        if not 0 <= growth_rate <= 1:
-            raise ValueError(
-                "Growth rate must be between 0 and 1."
-            )
-
-        if not 0 <= mortality_rate <= 1:
-            raise ValueError(
-                "Mortality rate must be between 0 and 1."
-            )
-
-        if density > carrying_capacity:
-            raise ValueError(
-                "Density cannot exceed carrying capacity."
-            )
-
-        self.density = float(density)
-        self.carrying_capacity = float(
-            carrying_capacity
-        )
-        self.growth_rate = growth_rate
-        self.mortality_rate = mortality_rate
-
-        self.health = 1.0
-
-        self.species_name = "Moss"
-
-    def can_survive_on(self, tile):
-        return (
-            tile.water_content
-            >= self.tile_requirements
-            ["minimum_water"]
-            and
-            tile.nutrient_content
-            >= self.tile_requirements
-            ["minimum_nutrients"]
-            and
-            tile.weathering_progress
-            >= self.tile_requirements
-            ["minimum_weathering"]
-        )
-
-    def get_suitability(self, tile):
-        water_suitability = clamp(
-            tile.water_content / 100.0,
-            0.0,
-            1.0
-        )
-
-        nutrient_suitability = clamp(
-            tile.nutrient_content / 100.0,
-            0.0,
-            1.0
-        )
-
-        weathering_suitability = clamp(
-            tile.weathering_progress / 10.0,
-            0.0,
-            1.0
-        )
-
-        return (
-            water_suitability
-            * nutrient_suitability
-            * weathering_suitability
-        )
-
-    def consume_resources(self, tile):
-        water_used = (
-            self.density * 0.001
-        )
-
-        nutrients_used = (
-            self.density * 0.0005
-        )
-
-        tile.remove_water(
-            water_used
-        )
-
-        tile.remove_nutrients(
-            nutrients_used
-        )
-
-    def reproduce(self, tile):
-        suitability = (
-            self.get_suitability(tile)
-        )
-
-        density_ratio = (
-            self.density
-            / self.carrying_capacity
-        )
-
-        logistic_growth = (
-            self.growth_rate
-            * self.density
-            * (1.0 - density_ratio)
-            * suitability
-        )
-
-        self.density = min(
-            self.carrying_capacity,
-            self.density + logistic_growth
-        )
-
-        tile.species_biomass[
-            self.species_name
-        ] = self.density
-
-        return logistic_growth
-
-    def improve_tile(self, tile):
-        organic_mass = (
-            self.improve_tile_via_death()
-        )
-
-        tile.add_organic_matter(
-            organic_mass
-        )
-
-        tile.add_nutrients(
-            organic_mass
-        )
-
-        tile.species_biomass[
-            self.species_name
-        ] = self.density
-
-        return organic_mass
-
-    def improve_tile_via_death(self):
-        mortality = (
-            self.density
-            * self.mortality_rate
-        )
-
-        variation = random.uniform(
-            0.8,
-            1.2
-        )
-
-        amount_dead = min(
-            self.density,
-            mortality * variation
-        )
-
-        self.density -= amount_dead
-
-        if self.density <= 0:
-            self.density = 0.0
-            self.die()
-
-        return amount_dead * 0.01
-
-    def try_spread(self, world):
-        if self.density < 100.0:
-            return False
-
-        row, column = self.organism_position
-
-        suitable_tiles = [
-            tile
-            for tile in world.get_neighbouring_tiles(
-                row,
-                column
-            )
-            if self.can_survive_on(tile)
-        ]
-
-        if not suitable_tiles:
-            return False
-
-        target_tile = random.choice(
-            suitable_tiles
-        )
-
-        target_position = (
-            target_tile.row,
-            target_tile.column
-        )
-
-        for organism in world.all_organisms:
-            if (
-                isinstance(organism, Moss)
-                and
-                organism.organism_position
-                == target_position
-            ):
-                transfer = min(
-                    10.0,
-                    self.density
-                )
-
-                available_capacity = (
-                    organism.carrying_capacity
-                    - organism.density
-                )
-
-                transfer = min(
-                    transfer,
-                    available_capacity
-                )
-
-                organism.density += transfer
-                self.density -= transfer
-
-                target_tile.species_biomass[
-                    "Moss"
-                ] = organism.density
-
-                return transfer > 0
-
-        new_moss = Moss(
-            organism_position=target_position,
-            density=10.0,
-            carrying_capacity=self.carrying_capacity,
-            growth_rate=self.growth_rate,
-            mortality_rate=self.mortality_rate
-        )
-
-        world.add_organism(self.species_name)
-
-        target_tile.species_biomass[
-            "Moss"
-        ] = new_moss.density
-
-        self.density -= 10.0
-
-        return True
-
-    def update(self, tile, world):
-        if self.density <= 0:
-            self.die()
-            return
-
-        if self.can_survive_on(tile):
-            self.health = min(
-                1.0,
-                self.health + 0.01
-            )
-
-            self.consume_resources(tile)
-            self.reproduce(tile)
-
-            if random.random() < 0.05:
-                self.try_spread(world)
-        else:
-            self.health -= 0.05
-
-            if self.health <= 0:
-                self.improve_tile(tile)
+    species_name = "Moss"
+    tile_requirements = {
+        "minimum_water": 10.0,
+        "minimum_nutrients": 5.0,
+        "minimum_weathering": 0.1,
+    }
 
 
 class Lichen(RockColoniser):
-    def __init__(
-            self,
-            organism_position,
-            density=100.0,
-            carrying_capacity=1000.0,
-            growth_rate=0.02,
-            mortality_rate=0.05
-    ):
-        super().__init__(
-            organism_position=organism_position,
-            tile_requirements={
-                "minimum_water": 10.0,
-                "minimum_nutrients": 7.0,
-                "minimum_weathering": 0.1
-            }
-        )
-
-        if density < 0:
-            raise ValueError(
-                "Density cannot be negative."
-            )
-
-        if carrying_capacity <= 0:
-            raise ValueError(
-                "Carrying capacity must be positive."
-            )
-
-        if not 0 <= growth_rate <= 1:
-            raise ValueError(
-                "Growth rate must be between 0 and 1."
-            )
-
-        if not 0 <= mortality_rate <= 1:
-            raise ValueError(
-                "Mortality rate must be between 0 and 1."
-            )
-
-        if density > carrying_capacity:
-            raise ValueError(
-                "Density cannot exceed carrying capacity."
-            )
-
-        self.density = float(density)
-        self.carrying_capacity = float(
-            carrying_capacity
-        )
-        self.growth_rate = growth_rate
-        self.mortality_rate = mortality_rate
-
-        self.health = 1.0
-
-        self.species_name = "Lichen"
-
-    def can_survive_on(self, tile):
-        return (
-                tile.water_content
-                >= self.tile_requirements
-                ["minimum_water"]
-                and
-                tile.nutrient_content
-                >= self.tile_requirements
-                ["minimum_nutrients"]
-                and
-                tile.weathering_progress
-                >= self.tile_requirements
-                ["minimum_weathering"]
-        )
-
-    def get_suitability(self, tile):
-        water_suitability = clamp(
-            tile.water_content / 100.0,
-            0.0,
-            1.0
-        )
-
-        nutrient_suitability = clamp(
-            tile.nutrient_content / 100.0,
-            0.0,
-            1.0
-        )
-
-        weathering_suitability = clamp(
-            tile.weathering_progress / 10.0,
-            0.0,
-            1.0
-        )
-
-        return (
-                water_suitability
-                * nutrient_suitability
-                * weathering_suitability
-        )
-
-    def consume_resources(self, tile):
-        water_used = (
-                self.density * 0.001
-        )
-
-        nutrients_used = (
-                self.density * 0.005
-        )
-
-        tile.remove_water(
-            water_used
-        )
-
-        tile.remove_nutrients(
-            nutrients_used
-        )
-
-    def reproduce(self, tile):
-        suitability = (
-            self.get_suitability(tile)
-        )
-
-        density_ratio = (
-                self.density
-                / self.carrying_capacity
-        )
-
-        logistic_growth = (
-                self.growth_rate
-                * self.density
-                * (1.0 - density_ratio)
-                * suitability
-        )
-
-        self.density = min(
-            self.carrying_capacity,
-            self.density + logistic_growth
-        )
-
-        tile.species_biomass[
-            self.species_name
-        ] = self.density
-
-        return logistic_growth
-
-    def improve_tile(self, tile):
-        organic_mass = (
-            self.improve_tile_via_death()
-        )
-
-        tile.add_organic_matter(
-            organic_mass
-        )
-
-        tile.add_nutrients(
-            organic_mass
-        )
-
-        tile.species_biomass[
-            self.species_name
-        ] = self.density
-
-        return organic_mass
-
-    def improve_tile_via_death(self):
-        mortality = (
-                self.density
-                * self.mortality_rate
-        )
-
-        variation = random.uniform(
-            0.8,
-            1.2
-        )
-
-        amount_dead = min(
-            self.density,
-            mortality * variation
-        )
-
-        self.density -= amount_dead
-
-        if self.density <= 0:
-            self.density = 0.0
-            self.die()
-
-        return amount_dead * 0.01
-
-    def try_spread(self, world):
-        if self.density < 100.0:
-            return False
-
-        row, column = self.organism_position
-
-        suitable_tiles = [
-            tile
-            for tile in world.get_neighbouring_tiles(
-                row,
-                column
-            )
-            if self.can_survive_on(tile)
-        ]
-
-        if not suitable_tiles:
-            return False
-
-        target_tile = random.choice(
-            suitable_tiles
-        )
-
-        target_position = (
-            target_tile.row,
-            target_tile.column
-        )
-
-        for organism in world.all_organisms:
-            if (
-                    isinstance(organism, Moss)
-                    and
-                    organism.organism_position
-                    == target_position
-            ):
-                transfer = min(
-                    10.0,
-                    self.density
-                )
-
-                available_capacity = (
-                        organism.carrying_capacity
-                        - organism.density
-                )
-
-                transfer = min(
-                    transfer,
-                    available_capacity
-                )
-
-                organism.density += transfer
-                self.density -= transfer
-
-                target_tile.species_biomass[
-                    "Lichen"
-                ] = organism.density
-
-                return transfer > 0
-
-        new_lichen = Lichen(
-            organism_position=target_position,
-            density=10.0,
-            carrying_capacity=self.carrying_capacity,
-            growth_rate=self.growth_rate,
-            mortality_rate=self.mortality_rate
-        )
-
-        world.add_organism(new_lichen)
-
-        target_tile.species_biomass[
-            "Lichen"
-        ] = new_lichen.density
-
-        self.density -= 10.0
-
-        return True
-
-    def update(self, tile, world):
-        if self.density <= 0:
-            self.die()
-            return
-
-        if self.can_survive_on(tile):
-            self.health = min(
-                1.0,
-                self.health + 0.01
-            )
-
-            self.consume_resources(tile)
-            self.reproduce(tile)
-
-            if random.random() < 0.05:
-                self.try_spread(world)
-        else:
-            self.health -= 0.05
-
-            if self.health <= 0:
-                self.improve_tile(tile)
-
-
-
+    species_name = "Lichen"
+    tile_requirements = {
+        "minimum_water": 10.0,
+        "minimum_nutrients": 7.0,
+        "minimum_weathering": 0.1,
+    }
+    nutrient_use_rate = 0.005

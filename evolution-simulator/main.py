@@ -1,13 +1,14 @@
 import pygame
 
 from properties.classes.Organisms import *
+from properties.classes.speciesbehavior.organisms.colonisers.rockcolonisers import Moss, Lichen
 from properties.classes.worldbehavior.class_world import World
 
 pygame.init()
 pygame.font.init()
 
 
-# window dimensions are measured in pixels; grid dimensions count tiles.
+# window dimensions are measured in pixels; grid dimensions count tiles
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 700
 SCREEN_TITLE = "Evolution Simulator"
@@ -15,7 +16,7 @@ SCREEN_TITLE = "Evolution Simulator"
 GRID_WIDTH = 10
 GRID_HEIGHT = 10
 
-# The information panel keeps a fixed width when the window is resized.
+# The information panel keeps a fixed width when the window is resized
 MAP_WIDTH = 720
 PANEL_WIDTH = SCREEN_WIDTH - MAP_WIDTH
 
@@ -512,6 +513,7 @@ def create_demo_organism():
     moss = Moss(
         organism_position=(row, column),
         density=100.0
+
     )
 
     lichen = Lichen(
