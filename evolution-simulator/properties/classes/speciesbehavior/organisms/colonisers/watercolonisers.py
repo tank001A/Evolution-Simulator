@@ -3,7 +3,7 @@ import random
 from properties.classes.Organisms import Coloniser
 from properties.visual_properties import clamp
 
-class RockColoniser(Coloniser):
+class WaterColoniser(Coloniser):
     species_name = None
     tile_requirements = None
     water_use_rate = 0.001
@@ -21,8 +21,8 @@ class RockColoniser(Coloniser):
     ):
         if self.species_name is None:
             raise TypeError(
-                "RockColoniser is a base class; create a specific "
-                "species such as Moss or Lichen instead."
+                "WaterColoniser is a base class; create a specific "
+                "species such as Reeds or  Pytoplankton instead."
             )
         if density < 0:
             raise ValueError("Density cannot be negative.")
@@ -47,11 +47,11 @@ class RockColoniser(Coloniser):
         self.health = 1.0
 
 
-    def get_suitability(self, tile):
-        water = clamp(tile.water_content / 100.0, 0.0, 1.0)
-        nutrients = clamp(tile.nutrient_content / 100.0, 0.0, 1.0)
-        weathering = clamp(tile.weathering_progress / 10.0, 0.0, 1.0)
-        return water * nutrients * weathering
+    #def get_suitability(self, tile):
+    #    water = clamp(tile.water_content / 100.0, 0.0, 1.0)
+    #    nutrients = clamp(tile.nutrient_content / 100.0, 0.0, 1.0)
+    #    weathering = clamp(tile.weathering_progress / 10.0, 0.0, 1.0)
+    #    return water * nutrients * weathering
 
     def consume_resources(self, tile):
         tile.remove_water(self.density * self.water_use_rate)
@@ -66,7 +66,7 @@ class RockColoniser(Coloniser):
             self.growth_rate
             * self.density
             * (1.0 - density_ratio)
-            * self.get_suitability(tile)
+            #* self.get_suitability(tile)
         )
         self.density = min(self.carrying_capacity, self.density + logistic_growth)
         self.record_biomass(tile)
@@ -160,20 +160,18 @@ class RockColoniser(Coloniser):
                 self.improve_tile(tile)
 
 
-class Moss(RockColoniser):
-    species_name = "Moss"
+class Reeds(WaterColoniser):
+    species_name = "Reeds"
     tile_requirements = {
         "minimum_water": 10.0,
         "minimum_nutrients": 5.0,
-        "minimum_weathering": 0.1,
     }
 
 
-class Lichen(RockColoniser):
-    species_name = "Lichen"
+class Pytoplankton(WaterColoniser):
+    species_name = "Pytoplankton"
     tile_requirements = {
         "minimum_water": 10.0,
-        "minimum_nutrients": 7.0,
-        "minimum_weathering": 0.1,
+        "minimum_nutrients": 5.0,
     }
     nutrient_use_rate = 0.005
