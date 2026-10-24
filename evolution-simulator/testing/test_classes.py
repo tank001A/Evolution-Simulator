@@ -1,14 +1,10 @@
 import unittest
 
-from classes import (
-    Coloniser,
-    Moss,
-    Organism,
-    RockTile,
-    Tile,
-    WaterTile,
-    World
-)
+from properties.classes.Organisms import *
+
+from properties.classes.worldbehavior.class_world import *
+from properties.classes.worldbehavior.other.tiles.rock_tile import RockTile
+from properties.classes.worldbehavior.other.tiles.water_tile import WaterTile
 
 
 class TestTile(unittest.TestCase):
