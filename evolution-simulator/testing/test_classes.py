@@ -1,6 +1,7 @@
 import unittest
 
 from properties.classes.Organisms import *
+from properties.classes.speciesbehavior.organisms.colonisers.rockcolonisers import Moss
 
 from properties.classes.worldbehavior.class_world import *
 from properties.classes.worldbehavior.other.tiles.rock_tile import RockTile
@@ -199,7 +200,8 @@ class TestSpecialisedTiles(unittest.TestCase):
         )
 
     def test_rock_tile_stores_dust(self):
-        tile = RockTile(0, 0)
+        tile = (
+            RockTile(0, 0))
 
         tile.update_dust(10)
 

@@ -182,7 +182,8 @@ class Tile:
             0.0,
             1.0
         )
-    #default weathering rate is assumed to be 2%
+
+    # base weathering increment before the other multipliers are applied
     def weather(self, weathering_rate=0.02):
         water_suitability = (
             self.get_water_suitability()
@@ -250,21 +251,17 @@ class Tile:
         )
 
     def get_succession_stage(self):
-
-        """
-        describes a tiles state of ecological development, from 0-100%
-        """
-
-        if 0 < self.soil_depth < 5.0:
+        # these are simplified soil stages rather than a full community model
+        if self.soil_depth < 5.0:
             return "Bare rock"
 
-        if 5.0 < self.soil_depth < 20.0:
+        if self.soil_depth < 20.0:
             return "Pioneer"
 
-        if 20.0 < self.soil_depth < 50.0:
+        if self.soil_depth < 50.0:
             return "Early soil"
 
-        if 50.0 < self.soil_depth < 80.0:
+        if self.soil_depth < 80.0:
             return "Developing soil"
 
         return "Mature soil"
