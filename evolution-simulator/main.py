@@ -177,6 +177,7 @@ def selection_menu():
                         chosen_value = options[1][1]
 
         if go_back:
+
             if environment_type is None:
                 return None
 
@@ -184,6 +185,7 @@ def selection_menu():
             continue
 
         if chosen_value is not None:
+
             if environment_type is None:
                 environment_type = chosen_value
                 continue
@@ -214,6 +216,7 @@ def selection_menu():
             options
         ):
             # a hover colour makes it clearer that the rectangles are buttons
+
             colour = (
                 (75, 105, 85)
                 if rectangle.collidepoint(mouse_position)
@@ -239,7 +242,7 @@ def selection_menu():
             )
 
         instructions = small_font.render(
-            "click an option - esc to go back or quit",
+            "click on an option - press esc to go back or quit",
             True,
             (190, 190, 190)
         )
@@ -320,7 +323,7 @@ def change_zoom(direction):
 
     viewport = get_map_viewport()
 
-    # preserve the world point at the centre of the view while changing scale
+    # preserve the world point at the center of the view while changing scale
     # without this the view would zoom around its top left corner
     centre_x = camera_x + viewport.width / (2 * old_zoom)
     centre_y = camera_y + viewport.height / (2 * old_zoom)
@@ -330,7 +333,7 @@ def change_zoom(direction):
     camera_x = centre_x - viewport.width / (2 * zoom)
     camera_y = centre_y - viewport.height / (2 * zoom)
 
-    # boundaries take priority if maintaining the centre would leave the world
+    # boundaries take priority if maintaining the center would leave the world
     clamp_camera()
 
 
@@ -350,7 +353,7 @@ def pan_camera(delta_time):
     global camera_x
     global camera_y
 
-    # held-key polling is used for continuous movement
+    # held-key checking is used for continuous movement
     # individual press events are used elsewhere for toggles and selection
     keys = pygame.key.get_pressed()
 
