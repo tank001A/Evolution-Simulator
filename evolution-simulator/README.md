@@ -1,6 +1,8 @@
 
 Put instructions here for the client and a bit of background information
-https://catalogue.ceh.ac.uk/documents/9f097d82-7560-4ed2-af13-604a9110cf6d?utm_source=chatgpt.com
+FOCUS ON WRITING HUNDREDS OF PAGES FOR NEA
+https://catalogue.ceh.ac.uk/documents/9f097d82-7560-4ed2-af13-604a9110cf6d
+![img.png](img.png)
 TODO: Work out how to get different organisms onto the screen
 Create a selection page/menu
 Create the water colonisers (For MVP, one of the 4 colonisers come on based on what the user picks, and colonises the environment. For this we also want the climax community state to be reached)

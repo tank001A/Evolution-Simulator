@@ -1,7 +1,7 @@
 import random
 
 from properties.classes.Organisms import Coloniser
-from properties.visual_properties import clamp
+from properties.utility_functions import clamp
 
 class RockColoniser(Coloniser):
     species_name = None
@@ -51,6 +51,7 @@ class RockColoniser(Coloniser):
         water = clamp(tile.water_content / 100.0, 0.0, 1.0)
         nutrients = clamp(tile.nutrient_content / 100.0, 0.0, 1.0)
         weathering = clamp(tile.weathering_progress / 10.0, 0.0, 1.0)
+
         return water * nutrients * weathering
 
     def consume_resources(self, tile):
@@ -177,3 +178,5 @@ class Lichen(RockColoniser):
         "minimum_weathering": 0.1,
     }
     nutrient_use_rate = 0.005
+
+

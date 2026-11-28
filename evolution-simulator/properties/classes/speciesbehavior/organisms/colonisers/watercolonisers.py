@@ -1,7 +1,7 @@
 import random
 
 from properties.classes.Organisms import Coloniser
-from properties.visual_properties import clamp
+from properties.utility_functions import clamp
 
 
 class WaterColoniser(Coloniser):

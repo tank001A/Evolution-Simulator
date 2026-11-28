@@ -17,6 +17,7 @@ class RockTile(Tile):
         self.dust = 0.0
 
     def update_dust(self, amount):
+
         if amount < 0:
             raise ValueError(
                 "Dust amount cannot be negative."

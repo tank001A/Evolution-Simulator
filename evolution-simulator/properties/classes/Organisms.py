@@ -1,6 +1,6 @@
 import random
 
-from properties.visual_properties import *
+from properties.utility_functions import *
 
 
 class Organism:

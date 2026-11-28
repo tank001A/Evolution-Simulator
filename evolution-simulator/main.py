@@ -1,5 +1,6 @@
 import pygame
 
+from plant_data_handling.plant_data import load_species
 from properties.classes.speciesbehavior.organisms.colonisers.rockcolonisers import (
     Moss,
     Lichen
@@ -14,7 +15,34 @@ from properties.classes.worldbehavior.class_world import World
 from properties.classes.worldbehavior.other.tiles.rock_tile import RockTile
 from properties.classes.worldbehavior.other.tiles.water_tile import WaterTile
 
-# change these two paths if your tile files are in a different package
+from properties.classes.worldbehavior.class_tile import Tile
+
+tile = Tile(0, 0)
+
+print("Initial environment:")
+print(tile.get_plant_environment())
+
+print("Initial indicators:")
+print(tile.get_plant_indicator_values())
+
+tile.add_water(50)
+tile.add_nutrients(30)
+tile.add_organic_matter(20)
+
+tile.update_light(40)
+tile.update_soil_ph(2.0)
+
+print("Updated environment:")
+print(tile.get_plant_environment())
+
+print("Updated indicators:")
+print(tile.get_plant_indicator_values())
+grassland_species = load_species("grassland")
+
+print("Number of species:", len(grassland_species))
+
+for species in list(grassland_species.values())[:5]:
+    print(species.name, species.moisture, species.growth_form)
 
 
 
@@ -36,7 +64,7 @@ PANEL_WIDTH = SCREEN_WIDTH - MAP_WIDTH
 # drawing and simulation have separate timers so camera movement does not
 # require an environmental calculation on every frame
 # these rates target 500 simulation ticks and 45 display frames per second
-SIMULATION_TICKS_PER_SECOND = 500
+SIMULATION_TICKS_PER_SECOND = 200
 TARGET_FPS = 45
 
 # fixed zoom choices make tile sizes predictable and keep selection simple
@@ -72,7 +100,7 @@ CONTROL_LINES = [
     "Page Up/Down: Species",
     "Space: Pause",
     "F11: Fullscreen",
-    "Home: Reset view"
+    "Spacebar: Reset view"
 ]
 
 
@@ -590,7 +618,7 @@ def draw_panel():
                 "P: Zoom in",
                 "O: Zoom out",
                 "WASD/Arrows: Pan",
-                "Home: Reset view"
+                "Spacebar: Reset view"
             ]
 
             for line in lines:
@@ -789,7 +817,7 @@ while running:
             elif event.key == pygame.K_o:
                 change_zoom(-1)
 
-            elif event.key == pygame.K_HOME:
+            elif event.key == pygame.K_SPACE:
                 reset_camera()
 
             elif event.key == pygame.K_SPACE:
@@ -843,12 +871,14 @@ while running:
 
     screen.fill((15, 15, 15))
 
-    # draw the interface after the world so it stays above the map
+    #draw the interface after the world so it stays above the map
     draw_map()
     draw_panel()
     draw_controls()
 
     pygame.display.flip()
+
+
 
 
 pygame.quit()

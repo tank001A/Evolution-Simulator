@@ -1,5 +1,7 @@
-from properties.rock_properties import *
-from properties.visual_properties import *
+
+from properties.rock_properties import ROCK_PROPERTIES
+from properties.utility_functions import clamp
+
 
 class Tile:
     def __init__(
@@ -13,25 +15,29 @@ class Tile:
         self.column = column
         self.tile_type = tile_type
 
+        # Environmental resources
         self.water_content = 0.0
         self.nutrient_content = 0.0
         self.organic_matter = 0.0
 
+        # Soil and weathering properties
         self.weathering_progress = 0.0
         self.soil_depth = 0.0
-#
+        self.soil_ph = 6.5
 
-
+        # Environmental properties used for plant suitability
+        self.light_level = 100.0
+        self.salt_level = 0.0
 
         self.lithology = None
         self.ucs_mpa = None
         self.weathering_factor = None
-        #empty dictionary for species populations
-        #dictionary {species_name: total biomass on that tile}
+
+        # Stores the total biomass of each species on this tile.
         self.species_biomass = {}
+
         self.set_lithology(lithology)
 
-    # fills in the correct UCS value and weathering factor, depending on the rock type.
     def set_lithology(self, lithology):
         if lithology not in ROCK_PROPERTIES:
             raise ValueError(
@@ -45,9 +51,190 @@ class Tile:
         )
 
         self.weathering_factor = (
-            ROCK_PROPERTIES[lithology]
-            ["weathering_factor"]
+            ROCK_PROPERTIES[lithology]["weathering_factor"]
         )
+
+    def update_light(self, cloud_cover):
+        if not 0.0 <= cloud_cover <= 100.0:
+            raise ValueError(
+                "Cloud cover must be between 0 and 100."
+            )
+
+        # More cloud cover means less available light.
+        self.light_level = 100.0 - cloud_cover
+
+    def add_salt(self, amount):
+        if amount < 0:
+            raise ValueError(
+                "Salt amount cannot be negative."
+            )
+
+        self.salt_level = clamp(
+            self.salt_level + amount,
+            0.0,
+            100.0
+        )
+
+    def remove_salt(self, amount):
+        if amount < 0:
+            raise ValueError(
+                "Salt amount cannot be negative."
+            )
+
+        self.salt_level = clamp(
+            self.salt_level - amount,
+            0.0,
+            100.0
+        )
+
+    def set_soil_ph(self, value):
+        if not 0.0 <= value <= 14.0:
+            raise ValueError(
+                "Soil pH must be between 0 and 14."
+            )
+
+        self.soil_ph = value
+
+    def update_soil_ph(
+        self,
+        rainfall_amount,
+        ph_change_rate=0.001
+    ):
+        if rainfall_amount < 0:
+            raise ValueError(
+                "Rainfall cannot be negative."
+            )
+
+        if ph_change_rate < 0:
+            raise ValueError(
+                "pH change rate cannot be negative."
+            )
+
+        # Rainfall and organic matter contribute to acidification.
+        acidification = (
+            rainfall_amount * ph_change_rate
+            + self.organic_matter * ph_change_rate * 0.01
+        )
+
+        # Weathering of minerals provides some buffering.
+        mineral_buffering = (
+            self.weathering_factor
+            * ph_change_rate
+            * 0.25
+        )
+
+        ph_change = (
+            mineral_buffering - acidification
+        )
+
+        self.soil_ph = clamp(
+            self.soil_ph + ph_change,
+            3.5,
+            8.5
+        )
+
+    def get_soil_fertility(self):
+        # These weights are initial model assumptions.
+        fertility = (
+            self.nutrient_content * 0.6
+            + self.organic_matter * 0.25
+            + self.soil_depth * 0.15
+        )
+
+        return clamp(
+            fertility,
+            0.0,
+            100.0
+        )
+
+    def get_plant_environment(self):
+        # Returns actual simulation measurements.
+        return {
+            "light": self.light_level,
+            "moisture": self.water_content,
+            "soil_acidity": self.soil_ph,
+            "soil_fertility": self.get_soil_fertility(),
+            "salt": self.salt_level
+        }
+
+    def convert_to_indicator(
+        self,
+        value,
+        source_min,
+        source_max,
+        indicator_min,
+        indicator_max
+    ):
+        # Converts a measurement into an estimated indicator value.
+        value = clamp(
+            value,
+            source_min,
+            source_max
+        )
+
+        proportion = (
+            (value - source_min)
+            / (source_max - source_min)
+        )
+
+        return (
+            indicator_min
+            + proportion * (indicator_max - indicator_min)
+        )
+
+    def get_plant_indicator_values(self):
+        # These conversions are simplified assumptions.
+        # They are not experimentally calibrated relationships.
+
+        indicators = {
+            # Light: L scale 1-9.
+            "light": self.convert_to_indicator(
+                self.light_level,
+                0.0,
+                100.0,
+                1.0,
+                9.0
+            ),
+
+            # Moisture: F scale 1-12.
+            "moisture": self.convert_to_indicator(
+                self.water_content,
+                0.0,
+                100.0,
+                1.0,
+                12.0
+            ),
+
+            # Soil reaction: R scale 1-9.
+            # The model uses pH 3.5-8.5 as its conversion range.
+            "soil_acidity": self.convert_to_indicator(
+                self.soil_ph,
+                3.5,
+                8.5,
+                1.0,
+                9.0
+            ),
+
+            # Fertility: N scale 1-9.
+            "soil_fertility": self.convert_to_indicator(
+                self.get_soil_fertility(),
+                0.0,
+                100.0,
+                1.0,
+                9.0
+            ),
+
+            # Salinity: S scale 0-9.
+            "salt": self.convert_to_indicator(
+                self.salt_level,
+                0.0,
+                100.0,
+                0.0,
+                9.0
+            )
+        }
+
+        return indicators
 
     def add_species_biomass(
         self,
@@ -58,12 +245,10 @@ class Tile:
             raise ValueError(
                 "Biomass amount cannot be negative."
             )
-        #finds the species current biomass; if this species isnt there default to 0.0
-        current_amount = (
-            self.species_biomass.get(
-                species_name,
-                0.0
-            )
+
+        current_amount = self.species_biomass.get(
+            species_name,
+            0.0
         )
 
         self.species_biomass[species_name] = (
@@ -80,12 +265,9 @@ class Tile:
                 "Biomass amount cannot be negative."
             )
 
-        # finds the species current biomass; if this species isnt there default to 0.0
-        current_amount = (
-            self.species_biomass.get(
-                species_name,
-                0.0
-            )
+        current_amount = self.species_biomass.get(
+            species_name,
+            0.0
         )
 
         remaining_amount = max(
@@ -93,9 +275,15 @@ class Tile:
             current_amount - amount
         )
 
-        self.species_biomass[species_name] = (
-            remaining_amount
-        )
+        if remaining_amount == 0.0:
+            self.species_biomass.pop(
+                species_name,
+                None
+            )
+        else:
+            self.species_biomass[species_name] = (
+                remaining_amount
+            )
 
     def get_species_biomass(self, species_name):
         return self.species_biomass.get(
@@ -109,7 +297,6 @@ class Tile:
         )
 
     def add_water(self, amount):
-        #amount is defined via formula
         if amount < 0:
             raise ValueError(
                 "Water amount cannot be negative."
@@ -168,7 +355,7 @@ class Tile:
             0.0,
             100.0
         )
-    #normalising values for 0-100 to 0-1 based on water suitability for that tile, for native species
+
     def get_water_suitability(self):
         return clamp(
             self.water_content / 100.0,
@@ -183,17 +370,13 @@ class Tile:
             1.0
         )
 
-    # base weathering increment before the other multipliers are applied
     def weather(self, weathering_rate=0.02):
         water_suitability = (
             self.get_water_suitability()
         )
 
-
-        #speeds up weathering rate based on organic matter
         organic_multiplier = (
-            1.0
-            + self.organic_matter / 100.0
+            1.0 + self.organic_matter / 100.0
         )
 
         weathering_change = (
@@ -204,33 +387,24 @@ class Tile:
         )
 
         self.weathering_progress = clamp(
-            self.weathering_progress
-            + weathering_change,
+            self.weathering_progress + weathering_change,
             0.0,
             100.0
         )
-    #conversion rate is assumed to be 2%
-    def develop_soil(
-        self,
-        soil_conversion_rate=0.02
-    ):
-        """
-        a method to turn weathered rock and organic matter into soil.
-        contribution to the soil dependent on numerous factors.
-        """
+
+    def develop_soil(self, soil_conversion_rate=0.02):
+        # Converts weathered rock and organic matter into soil.
+
         organic_contribution = (
-            self.organic_matter
-            * soil_conversion_rate
+            self.organic_matter * soil_conversion_rate
         )
 
         mineral_contribution = (
-            self.weathering_progress
-            * 0.005
+            self.weathering_progress * 0.005
         )
 
         soil_change = (
-            organic_contribution
-            + mineral_contribution
+            organic_contribution + mineral_contribution
         )
 
         self.soil_depth = clamp(
@@ -240,8 +414,7 @@ class Tile:
         )
 
         self.organic_matter = clamp(
-            self.organic_matter
-            - organic_contribution,
+            self.organic_matter - organic_contribution,
             0.0,
             100.0
         )
@@ -251,7 +424,6 @@ class Tile:
         )
 
     def get_succession_stage(self):
-        # these are simplified soil stages rather than a full community model
         if self.soil_depth < 5.0:
             return "Bare rock"
 
@@ -267,11 +439,6 @@ class Tile:
         return "Mature soil"
 
     def get_colour(self):
-
-        """
-        assigns the tile a color depending on its environmental conditions. As weathering increases, the tile becomes more reddish, and less blue.
-        """
-
         if self.tile_type == "water":
             return 40, 100, 200
 
@@ -281,9 +448,6 @@ class Tile:
         if self.soil_depth >= 20.0:
             return 110, 100, 55
 
-
-        #changes weathering from 0-100 to 0-1, dependent on progress
-        #perhaps normalise it from the get-go. Dont wanna do extra work for no reason, since you might as well normalise initially.
         weathering_ratio = (
             self.weathering_progress / 100.0
         )

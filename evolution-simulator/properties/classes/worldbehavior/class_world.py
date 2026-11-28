@@ -1,8 +1,11 @@
+
 import time
+import random
 
 import pygame
 
 from properties.classes.worldbehavior.class_tile import Tile
+from properties.utility_functions import clamp
 
 
 class World:
@@ -15,8 +18,6 @@ class World:
         environment_type="rock",
         tile_class=Tile
     ):
-        # reject an invalid environment before allocating the tile grid
-        # this prevents a partly constructed world being used elsewhere
         if environment_type not in ("rock", "water"):
             raise ValueError(
                 "Environment must be rock or water."
@@ -34,15 +35,11 @@ class World:
         self.environment_type = environment_type
         self.paused = False
 
-        # this measures real elapsed time, including time spent paused
-        # simulation_time is separate and counts completed simulation ticks
         self.start_time = time.perf_counter()
 
         self.grid = []
 
-        # main supplies the selected tile class rather than world importing
-        # every habitat type and deciding which one to use itself
-        # only the selected environment is allocated in memory
+        # Create the tile grid.
         for row in range(grid_height):
             current_row = []
 
@@ -52,74 +49,85 @@ class World:
                     column=column
                 )
 
-                # both tile classes must accept row and column and expose
-                # the same basic tile methods used throughout the world
                 if tile.tile_type != environment_type:
                     raise ValueError(
                         "Tile class does not match the selected environment."
                     )
 
                 if environment_type == "water":
-                    # assumed starting nutrients for the aquatic env
-                    # this is a model setting rather than measured water data
                     tile.nutrient_content = 30.0
+                    tile.water_content = 100.0
 
                 current_row.append(tile)
 
             self.grid.append(current_row)
 
-        # organisms are stored separately from tiles because their behaviour
-        # and population state belong to organism objects
-        # tile.species_biomass is a display record of those populations
         self.all_organisms = []
 
-        # retained for future conditional drawing and statistics updates
-        # main currently redraws every frame rather than checking these flags
         self.display_changed = True
         self.statistics_changed = True
 
-        # environmental changes are less frequent than organism updates
-        # all of these rates are per simulation tick or environment update
-        # changing ticks per second therefore changes the real time pace
-        self.environment_update_interval = 5
-        self.weathering_rate = 0.02
-        self.rainfall_amount = 1.0
+        # Global weather conditions.
+        self.cloud_cover = 40.0
+        self.temperature = 18.0
+
+        self.rainfall_amount = 0.0
         self.evaporation_amount = 0.5
 
-        # a small external nutrient supply keeps the aquatic env from
-        # stopping solely because its initial nutrients have run out
-        # this is not yet a complete nutrient cycling model
+        # Weather changes every ten simulation ticks.
+        self.weather_update_interval = 3600
+
+        self.cloud_cover_change = 5.0
+        self.temperature_change = 1.0
+
+        # Environmental update settings.
+        self.environment_update_interval = 5
+        self.weathering_rate = 0.02
+
         self.water_nutrient_input = 0.05
 
-        # store expensive grid-wide calculations so callers can read them
-        # without calculating the average again on every display frame
+        # Salt model settings.
+        self.salt_washout_rate = 0.05
+        self.salt_concentration_rate = 0.02
+
+        # Soil acidity model settings.
+        self.soil_ph_change_rate = 0.001
+
+        # Initialise light using the starting cloud cover.
+        for row in self.grid:
+            for tile in row:
+                tile.update_light(self.cloud_cover)
+
+        # Cached statistics.
         self.cached_average_water = 0.0
         self.cached_average_soil = 0.0
 
-        # community state is separate from the soil stage of an individual tile
-        # a water environment should not be called mature just because a soil
-        # depth threshold has been reached
+        # Community development.
         self.community_stage = "Uncolonised"
         self.stable_community_ticks = 0
-
-        # require the endpoint conditions for consecutive ticks rather than
-        # declaring success from one brief population peak
-        self.stability_ticks_required = 200
+        self.stability_ticks_required = 200 #change this
 
     def get_elapsed_time(self):
         return time.perf_counter() - self.start_time
 
     def update(self):
-        # also check here so callers other than main cannot advance a paused world
         if self.paused:
             return
 
         self.simulation_time += 1
 
-        # preserve a consistent update order so the model is easier to test
-        # organisms receive this tick's rainfall and evaporation before acting
+        # Update global weather at set intervals.
+        if (
+            self.simulation_time
+            % self.weather_update_interval
+            == 0
+        ):
+            self.update_weather()
+
+        # Apply the current weather to every tile.
         self.apply_rainfall()
         self.apply_evaporation()
+
         self.update_organisms()
 
         if (
@@ -134,30 +142,100 @@ class World:
         self.statistics_changed = True
         self.display_changed = True
 
+    def update_weather(self):
+        # Change cloud cover gradually.
+        cloud_change = random.uniform(
+            -self.cloud_cover_change,
+            self.cloud_cover_change
+        )
+
+        self.cloud_cover = clamp(
+            self.cloud_cover + cloud_change,
+            0.0,
+            100.0
+        )
+
+        # Change temperature gradually.
+        temperature_change = random.uniform(
+            -self.temperature_change,
+            self.temperature_change
+        )
+
+        self.temperature = clamp(
+            self.temperature + temperature_change,
+            -5.0,
+            40.0
+        )
+
+        # Estimate rainfall using cloud cover.
+        self.rainfall_amount = max(
+            0.0,
+            (self.cloud_cover - 50.0) / 20.0
+        )
+
+        # Estimate evaporation using temperature.
+        self.evaporation_amount = clamp(
+            (self.temperature + 5.0) / 30.0 * 0.5,
+            0.05,
+            1.0
+        )
+
+        # All tiles experience the same light conditions.
+        for row in self.grid:
+            for tile in row:
+                tile.update_light(self.cloud_cover)
+
     def apply_rainfall(self):
         for row in self.grid:
             for tile in row:
-                tile.add_water(self.rainfall_amount)
+                tile.add_water(
+                    self.rainfall_amount
+                )
+
+                if self.environment_type == "rock":
+                    # Rainfall washes some salt out of the soil.
+                    tile.remove_salt(
+                        self.rainfall_amount
+                        * self.salt_washout_rate
+                    )
 
     def apply_evaporation(self):
         for row in self.grid:
             for tile in row:
-                tile.remove_water(self.evaporation_amount)
+                tile.remove_water(
+                    self.evaporation_amount
+                )
+
+                if self.environment_type == "rock":
+                    # Evaporation increases the concentration of salt.
+                    tile.add_salt(
+                        self.evaporation_amount
+                        * self.salt_concentration_rate
+                    )
 
     def update_environment(self):
         for row in self.grid:
             for tile in row:
                 if self.environment_type == "water":
-                    # keep the selected aquatic habitat flooded for the env
-                    # rainfall and evaporation can still alter it between updates
-                    # water depth and drying ponds need a separate model later
+                    # Keep the aquatic environment permanently flooded.
                     tile.water_content = 100.0
-                    tile.add_nutrients(self.water_nutrient_input)
+
+                    tile.add_nutrients(
+                        self.water_nutrient_input
+                    )
+
                 else:
-                    # only rocky environments use the current weathering model
-                    # applying it to open water would produce misleading soil stages
-                    tile.weather(self.weathering_rate)
+                    # Update the rocky environment.
+                    tile.weather(
+                        self.weathering_rate
+                    )
+
                     tile.develop_soil()
+
+                    tile.update_soil_ph(
+                        self.rainfall_amount,
+                        self.soil_ph_change_rate
+                    )
 
     def pause_world(self):
         self.paused = True
@@ -171,9 +249,7 @@ class World:
                 "Number of ticks cannot be negative."
             )
 
-        # use the normal update path so fast forwarding follows the same rules
-        # a paused world deliberately remains paused here too
-        for _ in range(number_of_ticks):
+        for tick in range(number_of_ticks):
             self.update()
 
     def add_organism(self, organism):
@@ -183,8 +259,6 @@ class World:
         self.display_changed = True
 
     def get_tile_at(self, row, column):
-        # returning None gives callers a safe way to handle positions at the edge
-        # negative indices must be rejected because Python otherwise wraps them
         if not (
             0 <= row < self.grid_height
             and 0 <= column < self.grid_width
@@ -196,8 +270,6 @@ class World:
     def get_neighbouring_tiles(self, row, column):
         neighbours = []
 
-        # use four directly adjacent neighbours rather than diagonals
-        # this keeps the current spreading rule consistent across all species
         directions = [
             (-1, 0),
             (1, 0),
@@ -217,22 +289,21 @@ class World:
         return neighbours
 
     def update_organisms(self):
-        # iterate over a snapshot because spreading adds to all_organisms
-        # without a snapshot an offspring could act during its birth tick
-        # and potentially create another offspring before the tick finishes
+        # Iterate over a copy because organisms may spread.
         for organism in self.all_organisms[:]:
             if not organism.alive:
                 continue
 
             row, column = organism.organism_position
-            tile = self.get_tile_at(row, column)
+
+            tile = self.get_tile_at(
+                row,
+                column
+            )
 
             if tile is not None:
                 organism.update(tile, self)
 
-                # spreading changes the source density after reproduction
-                # record it again so the panel does not show the older value
-                # the check leaves room for future organisms without this method
                 if hasattr(organism, "record_biomass"):
                     organism.record_biomass(tile)
 
@@ -243,12 +314,13 @@ class World:
         ]
 
     def update_community_stage(self):
-        # this detector right now is patiently expecting population-based organisms with
-        # density and carrying_capacity, as used by the four colonisers
         living = [
             organism
             for organism in self.all_organisms
-            if organism.alive and organism.density > 0
+            if (
+                organism.alive
+                and getattr(organism, "density", 0) > 0
+            )
         ]
 
         if not living:
@@ -256,14 +328,18 @@ class World:
             self.stable_community_ticks = 0
             return
 
-        # a set counts an occupied tile once even if it contains several species
         occupied_positions = {
             organism.organism_position
             for organism in living
         }
 
-        total_tiles = self.grid_height * self.grid_width
-        coverage = len(occupied_positions) / total_tiles
+        total_tiles = (
+            self.grid_height * self.grid_width
+        )
+
+        coverage = (
+            len(occupied_positions) / total_tiles
+        )
 
         total_density = sum(
             organism.density
@@ -275,22 +351,27 @@ class World:
             for organism in living
         )
 
-        population_fill = total_density / total_capacity
+        if total_capacity > 0:
+            population_fill = (
+                total_density / total_capacity
+            )
+        else:
+            population_fill = 0.0
 
-
-        # coverage checks spread across the habitat while population_fill
-        # checks how established the living populations have become
         if coverage >= 0.9 and population_fill >= 0.8:
             self.stable_community_ticks += 1
         else:
             self.stable_community_ticks = 0
 
-        # the stage can move backwards if populations later decline
-        # this is a description of current conditions, not a permanent award
-        if self.stable_community_ticks >= self.stability_ticks_required:
+        if (
+            self.stable_community_ticks
+            >= self.stability_ticks_required
+        ):
             self.community_stage = "Stable community"
+
         elif coverage >= 0.9:
             self.community_stage = "Establishing community"
+
         else:
             self.community_stage = "Colonising"
 
@@ -306,8 +387,13 @@ class World:
                 tile_count += 1
 
         if tile_count > 0:
-            self.cached_average_water = total_water / tile_count
-            self.cached_average_soil = total_soil / tile_count
+            self.cached_average_water = (
+                total_water / tile_count
+            )
+
+            self.cached_average_soil = (
+                total_soil / tile_count
+            )
 
         self.statistics_changed = False
 
@@ -318,16 +404,13 @@ class World:
         return self.cached_average_soil
 
     def get_population_density(self, organism_type):
-        # filter by the requested class rather than returning every species
-        # isinstance also includes subclasses of the supplied class
-        return sum(
-            organism.density
-            for organism in self.all_organisms
-            if (
-                organism.alive
-                and isinstance(organism, organism_type)
-            )
-        )
+        total_density = 0
+
+        for organism in self.all_organisms:
+            if organism.alive and isinstance(organism, organism_type):
+                total_density += organism.density
+
+        return total_density
 
     def get_visible_bounds(
         self,
@@ -337,15 +420,23 @@ class World:
         viewport_width,
         viewport_height
     ):
-        # these bounds select what to draw rather than moving the camera
-        #  movement limits are handled separately in main
-        first_column = max(0, int(camera_x))
-        first_row = max(0, int(camera_y))
+        first_column = max(
+            0,
+            int(camera_x)
+        )
 
-        # include a small margin for partially visible edge tiles
-        # the camera can sit between whole tile positions
-        visible_columns = viewport_width // zoom + 2
-        visible_rows = viewport_height // zoom + 2
+        first_row = max(
+            0,
+            int(camera_y)
+        )
+
+        visible_columns = (
+            viewport_width // zoom + 2
+        )
+
+        visible_rows = (
+            viewport_height // zoom + 2
+        )
 
         last_column = min(
             self.grid_width,
@@ -373,13 +464,14 @@ class World:
         viewport_rect,
         selected_position=None
     ):
-        # clip drawing to the map so enlarged edge tiles cannot cover the panel
-        # restore the previous clip afterwards so main can draw its interface
         previous_clip = surface.get_clip()
         surface.set_clip(viewport_rect)
 
         try:
-            surface.fill((15, 15, 15), viewport_rect)
+            surface.fill(
+                (15, 15, 15),
+                viewport_rect
+            )
 
             (
                 first_row,
@@ -398,7 +490,6 @@ class World:
                 for column in range(first_column, last_column):
                     tile = self.grid[row][column]
 
-                    # convert world tile coordinates into viewport pixels
                     screen_x = (
                         viewport_rect.x
                         + int((column - camera_x) * zoom)
@@ -409,7 +500,6 @@ class World:
                         + int((row - camera_y) * zoom)
                     )
 
-                    # slight overlap avoids gaps caused by rounding positions
                     tile_rect = pygame.Rect(
                         screen_x,
                         screen_y,
@@ -430,5 +520,6 @@ class World:
                             tile_rect,
                             max(1, zoom // 4)
                         )
+
         finally:
             surface.set_clip(previous_clip)
